@@ -5,14 +5,12 @@ Sys.setenv(PATH = paste0(Sys.getenv("PATH"), ";", "C:\\rtools40\\mingw64\\bin"))
 
 update.scuba <- function(){
    # Read in transect section table:
-   s <- read.csv("http://dmapps/en/scuba/reports/section/?year")
+   s <- read.csv("http://dmapps/en/scuba/reports/section/?year=2021")
 
    t <- read.csv("http://dmapps/en/scuba/reports/section/?year")
 
    # Read biological data:
    b <- read.csv("http://dmapps/en/scuba/reports/observations/?year")
-
-
 }
 
 # Read transect section table:
