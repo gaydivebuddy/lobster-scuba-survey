@@ -28,7 +28,7 @@ aggregate(s[hvars], by = list(year = year(s$date)), sum)
 table(year(s$date), apply(s[hvars[]], 1, sum) > 0)
 
 s[which((year(s$date) == 2019) & (apply(s[hvars[]], 1, sum) == 0)), c(vars, "diver", "dive")]
-
+p()
 # Percentage of sections with no habitat designation:
 aggregate(apply(s[hvars], 1, sum), list(year(s$date)), function(x) round(100*sum(x==0)/length(x)))
 
