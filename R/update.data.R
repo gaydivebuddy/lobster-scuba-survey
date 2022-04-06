@@ -14,7 +14,9 @@ dives <- read.csv("http://dmapps/en/scuba/reports/dive/?year=2021")
 outings <- read.csv("http://dmapps/en/scuba/reports/outing/?year=2021")
 
 # Read biological data:
-observations <- read.csv("http://dmapps/en/scuba/reports/observations/?year=2017")
+observations <- read.csv("http://dmapps/en/scuba/reports/observations/?year=2018")
 
 # Scuba transect table:
 read.csv("http://dmapps/en/scuba/reports/scuba_transect/?year=2021")
+
+
