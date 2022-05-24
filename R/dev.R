@@ -1,11 +1,14 @@
 library(gulf.data)
+library(gulf.graphics)
 library(TMB)
 
-setwd("U:/Lobster/Transect Analysis/TMB")
-source("U:/TMB/TMB utilities.R")
+#setwd("U:/Lobster/Transect Analysis/TMB")
+#source("U:/TMB/TMB utilities.R")
 
 compile("dev.cpp")
 dyn.load(dynlib("dev"))
+
+setwd("C:/Users/SuretteTJ/Desktop/github/lobster-scuba-survey/R")
 
 # Target subset of data:
 # Read SCUBA lobster data:
@@ -38,9 +41,10 @@ obj$par <- theta$par
 rep  <- sdreport(obj)
 fixed <- summary(rep, "fixed")
 random <- summary(rep, "random")
-random <- extract.tmb(random)
 
-dbarplot(exp(fixed["alpha", 1] + random$year_effect), sort(unique(res$year)))
+
+gbarplot(exp(fixed["alpha", 1] + random[rownames(random) == "year_effect", 1]), as.numeric(sort(unique(x$year))))
+
 dbarplot(exp(fixed["alpha", 1] + random$region_effect))
 dbarplot(exp(fixed["alpha", 1] + random$cohort_effect))
 
@@ -69,7 +73,7 @@ fixed <- summary(rep, "fixed")
 random <- summary(rep, "random")
 random <- extract.tmb(random)
 
-dbarplot(random$year_effect)
+gbarplot(random$year_effect)
 dbarplot(random$region_effect)
 dbarplot(random$cohort_effect)
 
