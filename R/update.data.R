@@ -2,7 +2,7 @@
 
 
 # Dive log (does not work):
-file.copy(from = "http://dmapps/en/scuba/reports/dive log.xlsx", to = "dive log.xlsx")
+file.copy(from = "http://dmapps/en/scuba/reports/dive.log.xlsx", to = "dive log.xlsx")
 
 # Read in transect section table:
 sections <- read.csv("http://dmapps/en/scuba/reports/section/?year=2021")
@@ -19,4 +19,4 @@ observations <- read.csv("http://dmapps/en/scuba/reports/observations/?year=2018
 # Scuba transect table:
 read.csv("http://dmapps/en/scuba/reports/scuba_transect/?year=2021")
 
-
+read.scuba(year, ...)

@@ -3,8 +3,8 @@
 #include <TMB.hpp>
 
 template<class Type>
-Type objective_function<Type>::operator() (){
-   
+Type objective_function<Type>::operator() ()
+{
    // Data variable declarations:
    DATA_VECTOR(y);          // Count observations.
    DATA_VECTOR(area);       // Area coverage.
@@ -12,7 +12,7 @@ Type objective_function<Type>::operator() (){
    DATA_FACTOR(region);     // Region indicators.
    DATA_FACTOR(cohort);     // Cohort indicators.
 
-   // Fixed and random effect parameters:
+   // Parameter and random effect declarations:
    PARAMETER(alpha);                            // Global intercept parameter.
    PARAMETER_VECTOR(year_effect);               // Year random effect.
    PARAMETER_VECTOR(region_effect);             // Region random effect.
@@ -21,8 +21,6 @@ Type objective_function<Type>::operator() (){
    PARAMETER_VECTOR(year_cohort_effect);        // Year-cohort random effect.
    PARAMETER_VECTOR(region_cohort_effect);      // Region-cohort random effect.
    PARAMETER_VECTOR(year_region_cohort_effect); // Year-region-cohort random effect.
-   
-   // Log-scale error parameters:
    PARAMETER(log_sigma_year);                   // Log-scale error for year effect.
    PARAMETER(log_sigma_region);                 // Log-scale error for region effect.
    PARAMETER(log_sigma_cohort);                 // Log-scale error for cohort effect.
@@ -50,7 +48,7 @@ Type objective_function<Type>::operator() (){
    Type mu;                                     // Regression mean variable.
    Type res = 0;                                // Log-likelihood accumulator.
 
-   // Random effects contributions:
+   // Hierarchical prior contributions to log-likelihood:
    res -= sum(dnorm(year_effect, Type(0), sigma_year, true));
    res -= sum(dnorm(region_effect, Type(0), sigma_region, true));
    res -= sum(dnorm(cohort_effect, Type(0), sigma_cohort, true));
@@ -59,7 +57,6 @@ Type objective_function<Type>::operator() (){
    res -= sum(dnorm(region_cohort_effect, Type(0), sigma_region_cohort, true));
    res -= sum(dnorm(year_region_cohort_effect, Type(0), sigma_year_region_cohort, true));
                
-   // Observation log-likelihood:
    for(int i = 0; i < n_obs; i++){
       // Define log-linear mean:
       mu = exp(alpha +
@@ -72,7 +69,7 @@ Type objective_function<Type>::operator() (){
                year_region_cohort_effect[((year[i]-1) * n_region + (region[i]-1)) * n_cohort + (cohort[i]-1)] +
                log(area[i]) - log(100));
 
-      // Negative binomial log-density:
+      // Negative binomial distribution:
       res -= lgamma(y[i]+r) - lgamma(r) - lgamma(y[i]+1) + r*log(r) + y[i]*log(mu) - (r+y[i])*log(r+mu);
    }
 

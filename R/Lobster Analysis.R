@@ -1,7 +1,7 @@
 library(gulf)
 library(TMB)
 
-setwd("R/")
+setwd("U:/Lobster/Transect Analysis/TMB")
 source("U:/TMB/TMB utilities.R")
 
 compile("NB_lobster_transect_additive.cpp")

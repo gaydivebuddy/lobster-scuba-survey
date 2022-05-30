@@ -27,13 +27,3 @@ swept.area$swept.area <-  5 * swept.area$sections * swept.area$width_m
 transect <- unique(s[c("date", "region", "transect", "width_m", "depth_ft")])
 transect <- transect[order(transect$date), ]
 
-
-
-compile("test.cpp")
-
-dyn.load(dynlib("NB_lobster_transect_additive"))
-dyn.load(dynlib("NB_lobster_transect_interaction"))
-dyn.load(dynlib("NB_lobster_transect_full"))
-
-
-
