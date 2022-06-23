@@ -1,22 +1,165 @@
+library(gulf.data)
+library(gulf.graphics)
+
 # Read Scuba data:
-x <- read.scuba(2021)
+# x <- read.scuba(2000:2021)
+load("data 2000-2021.rdata")
+
+# Load Comeau exclusions table:
+exclusions <- read.csv(paste0(gsub("/R", "/data/", getwd()), "comeau exclusions.csv"))
+names(exclusions) <- c("year", "transect.name", paste0("cohort", 0:6))
+for (i in 1:nrow(exclusions)){
+   ix <- grep(exclusions$transect.name[i], x$transects$transect.name.old)
+   if (length(ix) > 0){
+      exclusions$transect.id[i]    <- list(x$transects$transect.id[ix])
+      exclusions$transect.names[i] <- list(x$transects$transect.name.old[ix])
+   }else{
+      exclusions$transect.id[i] <- list(NA)
+      exclusions$transect.names[i] <- list(NA)
+   }
+}
+
+# Define which transects were removed completely and which were the product of UPM seeding:
+seeded <- exclusions[apply(exclusions[, grep("cohort", names(exclusions))], 1, sum) < 6, ]
+exclusions <- exclusions[apply(exclusions[, grep("cohort", names(exclusions))], 1, sum) >= 6, ]
+
+# Import exclusion flags to dive table:
+ix <- match(x$dives$transect.name, x$transects$transect.name)
+x$dives$transect.id <- x$transects$transect.id[ix]
+x$dives$exclude <- FALSE
+for (i in 1:nrow(x$dives)){
+   if (x$dives$date[i] != ""){
+      tmp <- exclusions[year(x$dives$date[i]) == exclusions$year, ]
+      if (nrow(tmp) > 0){
+         exclude <- unlist(tmp$transect.id)
+         exclude <- sort(exclude[!is.na(exclude)])
+         if (x$dives$transect.id[i] %in% exclude) x$dives$exclude[i] <- TRUE 
+      } 
+   }
+}
+ix <- match(x$outings$outing.id, x$dives$outing.id)
+x$outings$exclude <- x$dives$exclude[ix]
+x$outings$exclude[is.na(x$outings$exclude)] <- FALSE
+ix <- match(x$sections$dive.id, x$dives$dive.id)
+x$sections$exclude <- x$dives$exclude[ix]
+x$sections$exclude[is.na(x$sections$exclude)] <- FALSE
+ix <- match(x$observations$dive.id, x$dives$dive.id)
+x$observations$exclude <- x$dives$exclude[ix]
+x$observations$exclude[is.na(x$observations$exclude)] <- FALSE
+
+# Import additional 'was.seeded' flags to dive table:
+#x$dives$seeded <- FALSE
+for (i in 1:nrow(x$dives)){
+   if (x$dives$date[i] != ""){
+      tmp <- seeded[year(x$dives$date[i]) == seeded$year, ]
+      if (nrow(tmp) > 0){
+         was.seeded <- unlist(tmp$transect.id)
+         was.seeded <- sort(was.seeded[!is.na(was.seeded)])
+         if (x$dives$transect.id[i] %in% was.seeded) x$dives$was.seeded[i] <- TRUE 
+      } 
+   }
+}
+ix <- match(x$outings$outing.id, x$dives$outing.id)
+x$outings$was.seeded <- x$dives$was.seeded[ix]
+x$outings$was.seeded[is.na(x$outings$was.seeded)] <- FALSE
+ix <- match(x$sections$dive.id, x$dives$dive.id)
+x$sections$was.seeded <- x$dives$was.seeded[ix]
+x$sections$was.seeded[is.na(x$sections$was.seeded)] <- FALSE
+ix <- match(x$observations$dive.id, x$dives$dive.id)
+x$observations$was.seeded <- x$dives$was.seeded[ix]
+x$observations$was.seeded[is.na(x$observations$was.seeded)] <- FALSE
+
+# Define regions to remove from analysis:
+remove.regions <- c("Grande-Anse", "Pigeon Hill", "Anse-Bleue", "Robichaud", "", "Alberton", "Nine Mile Creek")
 
 # Keep only completed sections and those not part of diet study sampling:
 x$sections <- x$sections[which(x$sections$completed & x$sections$transect.name != ""), ]
 x$sections$swept.area <- 5 * x$sections$width.m
-   
+x$sections$side.display[is.na(x$sections$side.display)] <- ""
+
+# Remove irrelevant regions:
+x$outings      <- x$outings[which(!(x$outings$region %in% remove.regions)), ]
+x$dives        <- x$dives[which(!(x$dives$region %in% remove.regions)), ]
+x$transects    <- x$transects[which(!(x$transects$region %in% remove.regions)), ]
+x$sections     <- x$sections[which(!(x$sections$region %in% remove.regions)), ]
+x$observations <- x$observations[which(!(x$observations$region %in% remove.regions)), ]
+
+# Remove training dive data:
+x$dives        <- x$dives[which(!x$dives$is.training), ]
+x$sections     <- x$sections[which(!x$sections$is.training), ]
+x$observations <- x$observations[which(!x$observations$is.training), ]
+
+# Remove UPM data:
+x$dives        <- x$dives[which(!x$dives$is.upm), ]
+x$sections     <- x$sections[which(!x$sections$is.upm), ]
+x$observations <- x$observations[which(!x$observations$is.upm), ]
+
+# Remove specific divers:
+remove <- c("Godin, M", "Asselin, Natalie", "Landry, Germain", "Leblanc, Stepan", "Landry, Eric", "Cousineau, Maryse")
+x$dives        <- x$dives[which(!(x$dives$diver %in% remove)), ]
+x$sections     <- x$sections[which(!(x$sections$diver %in% remove)), ]
+x$observations <- x$observations[which(!(x$observations$diver %in% remove)), ]
+
+# Determine observation precisions:
+x$observations$precision <- 1
+x$observations$precision[(year(x$observations$date) %in% c(2000:2018)) & (x$observations$certainty.rating == 0) & (x$observations$carapace.length.mm < 30)] <- 2
+x$observations$precision[(year(x$observations$date) %in% c(2000:2018)) & (x$observations$certainty.rating == 0) & (x$observations$carapace.length.mm >= 30)] <- 5
+x$observations$precision[(year(x$observations$date) %in% c(2019,2021)) & (x$observations$certainty.rating == 0)] <- 5
+
+# Remove excluded transects and data:
+x$outings      <- x$outings[!x$outings$exclude, ]
+x$dives        <- x$dives[!x$dives$exclude, ]
+x$sections     <- x$sections[!x$sections$exclude, ]
+x$observations <- x$observations[!x$observations$exclude, ]
+
+# Remove tows with short existence in Scuba survey:
+remove <- c(paste0("T-", c(11, 12, 21, 22, 31, 32, 41, 42, 61, 62), " (Neguac)"),
+            paste0("T-", c(1:4, 6, 9, 12:42), " (Fox Harbor)"),
+            paste0("T-", c(1, 10:13, 15, 17, 2, 22:26, 28:29, 3, 30:34, 4, 8:9), " (Caraquet)"),
+            paste0("T-", c(1, 2, 22, 3, 32, 4), " (Pointe-Verte)"), 
+            paste0("T-", c(7:9), " (Richibucto)"),
+            paste0("T-", c(7, 10:12), " (Shediac)"))
+x$outings      <- x$outings[!(x$outings$transect.name %in% remove), ]
+x$dives        <- x$dives[!(x$dives$transect.name %in% remove), ]
+x$sections     <- x$sections[!(x$sections$transect.name %in% remove), ]
+x$observations <- x$observations[!(x$observations$transect.name %in% remove), ]
+
+# Remove 'was.seeded' tows:
+
+
 # Remove data that have no corresponding transect in the sections table:
 x$outings      <- x$outings[x$outings$transect.name %in% unique(x$sections$transect.name), ]
-x$transects    <- x$transects[x$transects$name %in% unique(x$sections$transect.name), ]
+x$transects    <- x$transects[x$transects$transect.name %in% unique(x$sections$transect.name), ]
 x$dives        <- x$dives[x$dives$transect.name %in% unique(x$sections$transect.name), ]
 x$observations <- x$observations[x$observations$transect.name %in% unique(x$sections$transect.name), ]
 x$observations <- x$observations[x$observations$species == "American lobster", ]
 x$observations <- x$observations[x$observations$section.id %in% unique(x$sections$section.id), ]
 x$observations <- x$observations[!is.na(x$observations$carapace.length.mm), ]
 
-# Calculate size-frequencies by section and sex:
-f <- freq(x$observations$carapace.length.mm, by = x$observations[c("section.id", "sex")])
+# Calculate size-frequencies by section, sex and measurement precision:
+f <- freq(x$observations$carapace.length.mm, by = x$observations[c("section.id", "sex", "precision")])
 fvars <- names(f)[gsub("[0-9]", "", names(f)) == ""]
+
+# Spread-out uncertain size observations:
+smooth <- function(v, precision, scale = 0.4){
+   ix <- which(v > 0)
+   p <- rep(0, length(fvars))
+   for (i in 1:length(ix)){
+      p <- p + v[[ix[i]]] * (pnorm(as.numeric(fvars)+0.5, as.numeric(fvars[ix[i]]), scale * precision)-
+                             pnorm(as.numeric(fvars)-0.5, as.numeric(fvars[ix[i]]), scale * precision))
+      
+   }
+   p <- sum(v) * p / sum(p)
+}
+for (i in 1:nrow(f)){
+   if (f$precision[i] > 1){
+      v <- smooth(f[i,fvars], f$precision[i])
+      f[i,fvars] <- v
+   }
+}
+
+# Sum out precision variable:
+f <- aggregate(f[fvars], by = f[c("section.id", "sex")], sum)
 
 # Modified logistic model:
 mu <- function(x, theta){
@@ -31,11 +174,12 @@ mu <- function(x, theta){
 }
 theta <- c(xp = 60.93761, slope = 10.14174, log_a = 0.075303, log_b = -0.671195)
 p <- mu(as.numeric(fvars), theta) # Proportion of females by size, as per 'sex ratio analysis.R'.
+names(p) <- fvars
 
 # Parse unassigned sex category to males and females:
-fu <- fum <- fuf <- f[f$sex == "u", ]
-fum[fvars] <- fu[fvars] * repvec(1-p, nrow = nrow(fu))
-fuf[fvars] <- fu[fvars] * repvec(p, nrow = nrow(fu))
+fum <- fuf <- f[f$sex == "u", ]
+fum[fvars] <- fum[fvars] * repvec(1-p, nrow = nrow(fum))
+fuf[fvars] <- fuf[fvars] * repvec(p, nrow = nrow(fuf))
 fm <- f[f$sex == "m", ]
 ff <- f[f$sex == "f", ]
 ix <- match(fum$section.id, fm$section.id)
@@ -50,6 +194,7 @@ sf <- sm <- x$sections
 import(sm, fill = 0) <- fm
 import(sf, fill = 0) <- ff
 
+# Linearize size-frequency data:
 vars <- c("region", "date", "transect.name", "diver", "section.id", "side.display", "interval", "depth.ft", "visibility", "swept.area")
 for (i in 1:length(vars)){
    m.tmp <- data.frame(rep(sm[,vars[i]], each = length(fvars)), stringsAsFactors = FALSE)
@@ -69,58 +214,38 @@ rm$n <- as.vector(t(as.matrix(sm[fvars])))
 rf$carapace.length <- as.vector(t(repvec(as.numeric(fvars), nrow = nrow(sf))))
 rf$n <- as.vector(t(as.matrix(sf[fvars])))
 
-rm <- rm[rm$n > 0, ]
-rf <- rf[rf$n > 0, ]
+# Reduce data size:
+rm <- rm[rm$carapace.length <= 120, ]
+rf <- rf[rf$carapace.length <= 120, ]
+rm$carapace.length <- 5 * round(rm$carapace.length / 5)
+rf$carapace.length <- 5 * round(rf$carapace.length / 5)
+vars <- c("region", "date", "transect.name", "diver", "section.id", "carapace.length")
+rm <- aggregate(rm["n"], by = rm[vars], sum)
+rf <- aggregate(rf["n"], by = rf[vars], sum)
+
+# Reduce data set to numbers by diver at each transect:
+vars <- c("region", "date", "transect.name", "diver")
+area <- aggregate(x$sections["swept.area"],  by = x$sections[vars], sum)
+mm <- aggregate(rm[c("n")], by = rm[c(vars, "carapace.length")], sum)
+ix <- match(mm[vars], area[vars])
+mm$swept.area <- area$swept.area[ix]
+ff <- aggregate(rf[c("n")], by = rf[c(vars, "carapace.length")], sum)
+ix <- match(ff[vars], area[vars])
+ff$swept.area <- area$swept.area[ix]
+
+# Attach 'was.seeded' flag:
+vars <- c("region", "date", "transect.name", "diver")
+u <- unique(x$sections[c(vars, "was.seeded")])
+ix <- match(mm[vars], u[vars])
+mm$seeded <- u$was.seeded[ix]
+ix <- match(ff[vars], u[vars])
+ff$seeded <- u$was.seeded[ix]
+
 
 # Standardize size-frequencies by swept area:
 #sm[fvars] <- sm[fvars] / repvec(sm$swept.area, ncol = length(fvars))
 #sf[fvars] <- sf[fvars] / repvec(sm$swept.area, ncol = length(fvars))
 
-# Linearize data table:
 
-# Parse unassigned sex category to males or females:
-x$observations$n <- 1
-tmp <- x$observations[x$observations$sex == "u", ]
-x$observations <- x$observations[x$observations$sex != "u", ]
-
-# Parse
-m <- f <- tmp
-m$sex <- "m"
-f$sex <- "f"
-m$n <- 1-p[as.character(m$carapace.length.mm)]
-f$n <- p[as.character(f$carapace.length.mm)]
-
-x$observations <- rbind(x$observations, m, f)
-
-vars <- c("region", "date", "transect.name", "section.id", "diver", "side.display", "interval", "certainty.rating", "sex", "carapace.length.mm")
-
-vars %in% names(x$observations)
-
-tmp <- aggregate(x$observations["n"], by = x$observations[vars], sum)
-
-z <- tmp[tmp$certainty.rating == 0, ]
-
-f <- freq(z$carapace.length.mm, by = z[c("section.id", "diver", "sex")])
-
-fvars <- names(f)[gsub("[0-9]", "", names(f)) == ""]
-
-smooth <- function(v){
-   ix <- which(v > 0)
-   p <- rep(0, length(fvars))
-   for (i in 1:length(ix)){
-      p <- p + v[[ix[i]]] * (pnorm(as.numeric(fvars)+0.5, as.numeric(fvars[ix[i]]), 2)-
-                                pnorm(as.numeric(fvars)-0.5, as.numeric(fvars[ix[i]]), 2))
-      
-   }
-   p <- sum(v) * p / sum(p)
-}
-
-for (i in 1:nrow(f)){
-   print(i)
-   v <- smooth(f[i,fvars])
-   f[i,fvars] <- v
-}
-gbarplot(apply(f[fvars], 2, sum))
-vline(seq(0, 100, by = 5), lty = "dashed", col = "red")
 
 
