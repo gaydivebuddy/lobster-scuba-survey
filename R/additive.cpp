@@ -8,10 +8,12 @@ Type objective_function<Type>::operator() (){
    DATA_IVECTOR(region);                        // Region indicator.
    DATA_IVECTOR(transect);                      // Transect indicator.
    DATA_IVECTOR(diver);                         // Diver indicator
+   DATA_VECTOR(p_sampled);                      // Proportion sampled.
    DATA_VECTOR(swept_area);                     // Swept area.
    
    // Parameter and random effects:
    PARAMETER(alpha);                            // Intercept parameter.
+   PARAMETER(beta_sampled);                     // Sampling proportion coefficient.
    PARAMETER_VECTOR(length_effect);             // Length  effect.
    PARAMETER_VECTOR(year_effect);               // Year effect.
    PARAMETER_VECTOR(region_effect);             // Region effect.
@@ -26,6 +28,9 @@ Type objective_function<Type>::operator() (){
    PARAMETER(log_sigma_diver);                  // Error for diver effect.
    PARAMETER(log_r);                            // Negative binomial dispersion parameter.
    
+   // Auto-correlation parameter for random effects:
+   PARAMETER(logit_phi_year);                                            // Correlation parameter for year effect.
+   
    // Data and parameter dimensions:
    int n = z.size();                            // Number of observations.
   // int n_length = length_effect.size();         // Number of length bins.
@@ -35,12 +40,15 @@ Type objective_function<Type>::operator() (){
  //  int n_diver = diver_effect.size();           // Number of divers.
    
    // Transformations:
-   Type res = 0;                                // Log-likelihood accumulator.
-   Type r = exp(log_r);                         // Negative binomial precision parameter.
+   Type res = 0;                                       // Log-likelihood accumulator.
+   Type r = exp(log_r);                                // Negative binomial precision parameter.
+   Type phi_year = 1.0 / (1.0 + exp(-logit_phi_year)); // Year effect correlation parameter.
    
    // Primary random effects:
+   using namespace density;
    res -= sum(dnorm(length_effect, 0.0, exp(log_sigma_length), true));
-   res -= sum(dnorm(year_effect, 0.0, exp(log_sigma_year), true));
+   res += SCALE(AR1(phi_year), exp(log_sigma_year))(year_effect);        // Year effect.
+   // res -= sum(dnorm(year_effect, 0.0, exp(log_sigma_year), true));
    res -= sum(dnorm(region_effect, 0.0, exp(log_sigma_region), true));
    res -= sum(dnorm(transect_effect, 0.0, exp(log_sigma_transect), true));
    res -= sum(dnorm(diver_effect, 0.0, exp(log_sigma_diver), true));
@@ -54,6 +62,7 @@ Type objective_function<Type>::operator() (){
                     region_effect[region[i]] +
                     transect_effect[transect[i]] +
                     diver_effect[diver[i]] + 
+                    beta_sampled * (1-p_sampled[i]) + 
                     log(swept_area[i]));
       
       // Negative binomial distribution:

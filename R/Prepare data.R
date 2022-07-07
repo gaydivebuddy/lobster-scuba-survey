@@ -1,12 +1,16 @@
 library(gulf.data)
 library(gulf.graphics)
 
+precision <- 1
+
 # Read Scuba data:
 # x <- read.scuba(2000:2021)
-load("data 2000-2021.rdata")
+load("data/data 2000-2021.rdata")
 
 # Load Comeau exclusions table:
-exclusions <- read.csv(paste0(gsub("/R", "/data/", getwd()), "comeau exclusions.csv"))
+#exclusions <- read.csv(paste0(gsub("/R", "/data/", getwd()), "comeau exclusions.csv"))
+exclusions <- read.csv(paste0(getwd(), "/data/", "comeau exclusions.csv"))
+
 names(exclusions) <- c("year", "transect.name", paste0("cohort", 0:6))
 for (i in 1:nrow(exclusions)){
    ix <- grep(exclusions$transect.name[i], x$transects$transect.name.old)
@@ -100,6 +104,10 @@ x$dives        <- x$dives[which(!(x$dives$diver %in% remove)), ]
 x$sections     <- x$sections[which(!(x$sections$diver %in% remove)), ]
 x$observations <- x$observations[which(!(x$observations$diver %in% remove)), ]
 
+# Clean up dates:
+ix <- which(x$dives$date == "")
+x$dives$date[ix] <- x$outings$date[match(x$dives$outing.id[ix], x$outings$outing.id)]
+
 # Determine observation precisions:
 x$observations$precision <- 1
 x$observations$precision[(year(x$observations$date) %in% c(2000:2018)) & (x$observations$certainty.rating == 0) & (x$observations$carapace.length.mm < 30)] <- 2
@@ -125,7 +133,8 @@ x$sections     <- x$sections[!(x$sections$transect.name %in% remove), ]
 x$observations <- x$observations[!(x$observations$transect.name %in% remove), ]
 
 # Remove 'was.seeded' tows:
-
+x$dives <- x$dives[which(!x$dives$was.seeded), ]
+x$sections <- x$sections[which(!is.na(match(x$sections$dive.id, x$dives$dive.id))), ]
 
 # Remove data that have no corresponding transect in the sections table:
 x$outings      <- x$outings[x$outings$transect.name %in% unique(x$sections$transect.name), ]
@@ -135,6 +144,25 @@ x$observations <- x$observations[x$observations$transect.name %in% unique(x$sect
 x$observations <- x$observations[x$observations$species == "American lobster", ]
 x$observations <- x$observations[x$observations$section.id %in% unique(x$sections$section.id), ]
 x$observations <- x$observations[!is.na(x$observations$carapace.length.mm), ]
+
+# Attach proportion of sampled sections per transect:
+res <- aggregate(list(p = x$sections$interval), by = x$sections[c("region", "date", "transect.name")], function(x) length(unique(x)) / (diff(range(x))+1))
+res$p[which(year(res$date) >= 2019)] <- 1
+ix <- match(x$sections[c("region", "date", "transect.name")], res[c("region", "date", "transect.name")])
+x$sections$proportion.sampled <- res$p[ix]
+
+# Remove years prior to 2003:
+x$outings      <- x$outings[year(x$outings$date) >= 2003, ]
+x$dives        <- x$dives[year(x$dives$date) >= 2003, ]
+x$sections     <- x$sections[year(x$sections$date) >= 2003, ]
+x$observations <- x$observations[year(x$observations$date) >= 2003, ]
+
+# Export data to Excel:
+# excel(x$transects)
+# excel(x$outings)
+# excel(x$dives)
+# excel(x$sections)
+# excel(x$observations)
 
 # Calculate size-frequencies by section, sex and measurement precision:
 f <- freq(x$observations$carapace.length.mm, by = x$observations[c("section.id", "sex", "precision")])
@@ -195,7 +223,7 @@ import(sm, fill = 0) <- fm
 import(sf, fill = 0) <- ff
 
 # Linearize size-frequency data:
-vars <- c("region", "date", "transect.name", "diver", "section.id", "side.display", "interval", "depth.ft", "visibility", "swept.area")
+vars <- c("region", "date", "transect.name", "diver", "section.id", "side.display", "interval", "depth.ft", "proportion.sampled", "visibility", "swept.area")
 for (i in 1:length(vars)){
    m.tmp <- data.frame(rep(sm[,vars[i]], each = length(fvars)), stringsAsFactors = FALSE)
    f.tmp <- data.frame(rep(sf[,vars[i]], each = length(fvars)), stringsAsFactors = FALSE)
@@ -217,14 +245,14 @@ rf$n <- as.vector(t(as.matrix(sf[fvars])))
 # Reduce data size:
 rm <- rm[rm$carapace.length <= 120, ]
 rf <- rf[rf$carapace.length <= 120, ]
-rm$carapace.length <- 5 * round(rm$carapace.length / 5)
-rf$carapace.length <- 5 * round(rf$carapace.length / 5)
-vars <- c("region", "date", "transect.name", "diver", "section.id", "carapace.length")
+rm$carapace.length <- precision * round(rm$carapace.length / precision)
+rf$carapace.length <- precision * round(rf$carapace.length / precision)
+vars <- c("region", "date", "transect.name", "diver", "section.id", "carapace.length", "proportion.sampled")
 rm <- aggregate(rm["n"], by = rm[vars], sum)
 rf <- aggregate(rf["n"], by = rf[vars], sum)
 
 # Reduce data set to numbers by diver at each transect:
-vars <- c("region", "date", "transect.name", "diver")
+vars <- c("region", "date", "transect.name", "diver", "proportion.sampled")
 area <- aggregate(x$sections["swept.area"],  by = x$sections[vars], sum)
 mm <- aggregate(rm[c("n")], by = rm[c(vars, "carapace.length")], sum)
 ix <- match(mm[vars], area[vars])
@@ -234,18 +262,14 @@ ix <- match(ff[vars], area[vars])
 ff$swept.area <- area$swept.area[ix]
 
 # Attach 'was.seeded' flag:
-vars <- c("region", "date", "transect.name", "diver")
+vars <- c("region", "date", "transect.name", "diver", "proportion.sampled")
 u <- unique(x$sections[c(vars, "was.seeded")])
 ix <- match(mm[vars], u[vars])
 mm$seeded <- u$was.seeded[ix]
 ix <- match(ff[vars], u[vars])
 ff$seeded <- u$was.seeded[ix]
 
-
 # Standardize size-frequencies by swept area:
 #sm[fvars] <- sm[fvars] / repvec(sm$swept.area, ncol = length(fvars))
 #sf[fvars] <- sf[fvars] / repvec(sm$swept.area, ncol = length(fvars))
-
-
-
 

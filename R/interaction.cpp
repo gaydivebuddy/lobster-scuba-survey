@@ -8,10 +8,13 @@ Type objective_function<Type>::operator() (){
    DATA_IVECTOR(region);                        // Region indicator.
    DATA_IVECTOR(transect);                      // Transect indicator.
    DATA_IVECTOR(diver);                         // Diver indicator
+   DATA_VECTOR(p_sampled);                      // Proportion sampled.
    DATA_VECTOR(swept_area);                     // Swept area.
+   DATA_IMATRIX(mls);                           // Minimum legal sizes (n_year x n_region).
    
    // Parameter and random effects:
    PARAMETER(alpha);                            // Intercept parameter.
+   PARAMETER(beta_sampled);                     // Sampling proportion coefficient.
    PARAMETER_VECTOR(length_effect);             // Length  effect.
    PARAMETER_VECTOR(year_effect);               // Year effect.
    PARAMETER_VECTOR(region_effect);             // Region effect.
@@ -20,11 +23,11 @@ Type objective_function<Type>::operator() (){
    
    // Interaction random effect terms:
    PARAMETER_VECTOR(length_year_effect);        // Length x year interaction effect.
-   PARAMETER_VECTOR(length_region_effect);      // Length x region interaction effect.
    PARAMETER_VECTOR(region_year_effect);        // Region x year interaction effect.
-   PARAMETER_VECTOR(length_diver_effect);       // Length x diver interaction effect.
-   PARAMETER_VECTOR(diver_year_effect);         // Diver x year interaction effect.
    PARAMETER_VECTOR(transect_year_effect);      // Transect x year interaction effect.
+   PARAMETER_VECTOR(diver_year_effect);         // Diver x year interaction effect.
+   PARAMETER_VECTOR(length_region_effect);      // Length x region interaction effect.
+   PARAMETER_VECTOR(length_diver_effect);       // Length x diver interaction effect.
    PARAMETER_VECTOR(length_year_region_effect); // Length x year x region interaction effect.
    
    // Error parameters for random effects:
@@ -36,11 +39,11 @@ Type objective_function<Type>::operator() (){
    
    // Error parameters for interaction random effects:
    PARAMETER(log_sigma_length_year);            // Error for length x year interaction effect.
-   PARAMETER(log_sigma_length_region);          // Error for length x region interaction effect.
    PARAMETER(log_sigma_region_year);            // Error for region x year interaction effect.
-   PARAMETER(log_sigma_length_diver);           // Error for length x diver interaction effect.
-   PARAMETER(log_sigma_diver_year);             // Error for diver x year interaction effect.
+   PARAMETER(log_sigma_length_region);          // Error for length x region interaction effect.
    PARAMETER(log_sigma_transect_year);          // Error for transect x year interaction effect.
+   PARAMETER(log_sigma_diver_year);             // Error for diver x year interaction effect.
+   PARAMETER(log_sigma_length_diver);           // Error for length x diver interaction effect.
    PARAMETER(log_sigma_length_year_region);     // Error for length x year x region interaction effect.  
       
    // Auto-correlation parameter for random effects:
@@ -111,6 +114,7 @@ Type objective_function<Type>::operator() (){
                     diver_year_effect[diver[i] * n_year + year[i]] +
                     transect_year_effect[transect[i] * n_year + year[i]] +
                     length_year_region_effect[(len[i] * n_year + year[i]) * n_region + region[i]] + 
+                    beta_sampled * (1-p_sampled[i]) + 
                     log(swept_area[i]));
       
       // Negative binomial distribution:
@@ -134,8 +138,26 @@ Type objective_function<Type>::operator() (){
       }
    }
    
+   // Calculate stock indices:
+   matrix<Type> abundance_L40(n_year, n_region); 
+   matrix<Type> abundance_G20L40(n_year, n_region);
+   matrix<Type> com(n_year, n_region);
+   abundance_L40.fill(0);
+   abundance_G20L40.fill(0);
+   com.fill(0);
+   for (int j = 0; j < n_year; j++){
+      for (int k = 0; k < n_region; k++){
+         for (int i = 0; i < 40; i++)     abundance_L40(j,k) += mu(i,j,k);
+         for (int i = 20; i < 40; i++) abundance_G20L40(j,k) += mu(i,j,k);
+         for (int i = mls(j,k); i < n_length; i++)  com(j,k) += mu(i,j,k);
+      }
+   }
+         
    // Output:
    REPORT(mu);
+   REPORT(abundance_L40);
+   REPORT(abundance_G20L40);
+   REPORT(com);
    
    return res;
 }
