@@ -99,9 +99,10 @@ Type objective_function<Type>::operator() (){
    res -= sum(dnorm(length_year_region_effect, 0.0, exp(log_sigma_length_year_region), true));
    
    // Observation model:
+   vector<Type> mu_p(n);
    for (int i = 0; i < n; i++){
       // Define mean:
-      Type mu = exp(alpha + 
+      mu_p[i] = exp(alpha + 
                     length_effect[len[i]] + 
                     year_effect[year[i]] + 
                     region_effect[region[i]] +
@@ -118,7 +119,7 @@ Type objective_function<Type>::operator() (){
                     log(swept_area[i]));
       
       // Negative binomial distribution:
-      res -= lgamma(z[i]+r) - lgamma(r) - lgamma(z[i]+1) + r*log(r) + z[i]*log(mu) - (r+z[i])*log(r+mu);;
+      res -= lgamma(z[i]+r) - lgamma(r) - lgamma(z[i]+1) + r*log(r) + z[i]*log(mu_p[i]) - (r+z[i])*log(r+mu_p[i]);;
    }
    
    // Calculate predicted length frequencies by year and region:
@@ -155,6 +156,7 @@ Type objective_function<Type>::operator() (){
          
    // Output:
    REPORT(mu);
+   REPORT(mu_p);
    REPORT(abundance_L40);
    REPORT(abundance_G20L40);
    REPORT(com);

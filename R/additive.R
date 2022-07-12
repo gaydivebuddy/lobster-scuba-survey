@@ -18,6 +18,7 @@ regions <- sort(unique(mm$region))
 years <- sort(unique(year(unique(x$sections$date))))
 years <- min(years):max(years)
 lens <- sort(unique(mm$carapace.length))
+regions.ordered <- c("Pointe-Verte", "Caraquet", "Neguac", "Richibucto", "Cocagne", "Shediac", "Murray Corner", "Fox Harbor", "Toney River")
 
 # Read minimum legal size table:
 mls <- read.csv("data/minimum_legal_size.txt")
@@ -72,6 +73,14 @@ for (i in 1:nrow(mls)){
 }
 mls <- t(mls)
 
+fun <- function(x, n = 10000){
+   len <- max(unlist(lapply(data, function(x) length(x))))
+   ix <- sort(sample(1:len, n))
+   for (i in 1:length(x)) if (length(x[[i]]) == len) x[[i]] <- x[[i]][ix]
+   return(x)
+}
+
+
 # Prepare data:
 data <- list(z = mm$n,
              len = match(mm$carapace.length, lens)-1,
@@ -101,14 +110,14 @@ parameters <- list(alpha = log(mean(data$z)),                      # Intercept p
 
 # Build TMB model:
 random <- c("length_effect", "year_effect", "region_effect", "transect_effect", "diver_effect")
-obj <- MakeADFun(data = data, parameters = parameters, random = random, DLL = "additive")
+obj <- MakeADFun(data = fun(data, 10000), parameters = parameters, random = random, DLL = "additive")
 
 theta <- optim(obj$par, obj$fn, obj$gr, control = list(maxit = 5000, trace = 3))$par
 obj$par <- theta
 
 rep  <- sdreport(obj)
-fixed <- summary(rep, "fixed")
-random <- summary(rep, "random")
+fixef <- summary(rep, "fixed")
+ranef <- summary(rep, "random")
 
 # Plot results:
 gbarplot(exp(random[grep("length_effect", rownames(random)), 1]))
@@ -117,16 +126,19 @@ gbarplot(exp(random[grep("diver_effect", rownames(random)), 1]))
 hline(1, col = "red", lwd = 2)
 text(1:length(divers), 0.5 * exp(random[grep("diver_effect", rownames(random)), 1]), divers, srt = 90)
 gbarplot(exp(random[grep("transect_effect", rownames(random)), 1]))
-gbarplot(exp(random[grep("region_effect", rownames(random)), 1]))
+
+region_effect <- exp(ranef[grep("region_effect", rownames(ranef)), 1])[match(regions, regions.ordered)]
+names(region_effect) <- regions.ordered
+gbarplot(region_effect)
 hline(1, col = "red", lwd = 2)
-text(1:length(regions), 0.5 * exp(random[grep("region_effect", rownames(random)), 1]),regions, srt = 90)
+text(1:length(regions), 0.5 * region_effect, names(region_effect), srt = 90)
 
 # Compile and load interaction model:
 clc(); compile("R/interaction.cpp")
 dyn.load(dynlib("R/interaction"))
 
 # Initialize parameters:
-parameters <- update.parameters(parameters, fixed, random)
+parameters <- update.parameters(parameters, fixef, ranef)
 parameters$length_year_effect = rep(0, (max(data$len)+1) * (max(data$year)+1))         # Length x year interaction effect.
 parameters$region_year_effect = rep(0, (max(data$year)+1) * (max(data$region)+1))      # Year x region interaction effect.
 parameters$transect_year_effect = rep(0, (max(data$year)+1) * (max(data$transect)+1))  # Year x region interaction effect.
@@ -149,16 +161,127 @@ parameters$logit_phi_region_year <- 0
 parameters$logit_phi_length_year <- 0
 
 # Build TMB model:
-map <- list(beta_sampled = factor(NA))
+parameters$beta_sampled <- 0
+
+# Function for fixing sets of parameters:
+map <- function(parameters, fixed, free){
+   # Define using specified fixed parameters:
+   if (!missing(fixed)){
+      fixed <- fixed[fixed %in% names(parameters)]
+      parameters <- parameters[fixed]
+      for (i in 1:length(parameters)){
+         tmp <- factor(rep(NA, length(parameters[[i]])))
+         dim(tmp) <- dim(parameters[[i]])
+         parameters[[i]] <- tmp
+      }
+   }
+ 
+   # Define using specified free parameters:
+   if (!missing(free)){
+      free <- free[free %in% names(parameters)]
+      fixed <- setdiff(names(parameters), free)
+      parameters <- map(parameters, fixed = fixed)
+   }  
+   
+   return(parameters)
+}
+   
+# Start estimating random effects:
+free <- c("length_year_effect", "length_region_effect", "region_year_effect",
+          "log_sigma_length_year", "log_sigma_length_region", "log_sigma_region_year")
+fixed <- setdiff(names(parameters), free)
 random <- c("length_effect", "year_effect", "region_effect", "transect_effect", "diver_effect", 
             "length_year_effect", "length_region_effect", "region_year_effect", "length_diver_effect",
             "diver_year_effect", "transect_year_effect", "length_year_region_effect")
-obj <- MakeADFun(data = data, parameters = parameters, random = random, map = map, DLL = "interaction")
+obj <- MakeADFun(data = fun(data, 50000), 
+                 parameters = parameters, 
+                 random = random, map = map(parameters, free = free), 
+                 DLL = "interaction")
 
-theta <- optim(obj$par, obj$fn, obj$gr, control = list(maxit = 5000, trace = 3))$par
+theta <- optim(obj$par, obj$fn, obj$gr, control = list(maxit = 1000, trace = 3))$par
 obj$par <- theta
-
 rep  <- sdreport(obj)
-fixed <- summary(rep, "fixed")
-random <- summary(rep, "random")
+fixef <- summary(rep, "fixed")
+ranef <- summary(rep, "random")
+parameters <- update.parameters(parameters, fixef, ranef)
+
+# Add three-way interaction:
+free <- unique(c(free, "length_year_region_effect", "log_sigma_length_year_region"))
+fixed <- setdiff(names(parameters), free)
+obj <- MakeADFun(data = fun(data, 50000), 
+                 parameters = parameters, 
+                 random = random, map = map(parameters, free = free), 
+                 DLL = "interaction")
+
+theta <- optim(obj$par, obj$fn, obj$gr, control = list(maxit = 1000, trace = 3))$par
+obj$par <- theta
+rep  <- sdreport(obj)
+fixef <- summary(rep, "fixed")
+ranef <- summary(rep, "random")
+parameters <- update.parameters(parameters, fixef, ranef)
+
+# Add transect x year interaction:
+free <- unique(c(free, "transect_year_effect", "log_sigma_transect_year", "log_r"))
+fixed <- setdiff(names(parameters), free)
+obj <- MakeADFun(data = fun(data, 50000), 
+                 parameters = parameters, 
+                 random = random, map = map(parameters, free = free), 
+                 DLL = "interaction")
+
+theta <- optim(obj$par, obj$fn, obj$gr, control = list(maxit = 1000, trace = 3))$par
+obj$par <- theta
+rep  <- sdreport(obj)
+fixef <- summary(rep, "fixed")
+ranef <- summary(rep, "random")
+parameters <- update.parameters(parameters, fixef, ranef)
+
+# Add additive effects:
+free <- unique(c(free, "alpha", "length_effect", "year_effect", "region_effect", "transect_effect", "diver_effect",
+                 "log_sigma_length",  "log_sigma_year", "log_sigma_region", "log_sigma_transect", "log_sigma_diver")) 
+fixed <- setdiff(names(parameters), free)
+obj <- MakeADFun(data = fun(data, 50000), 
+                 parameters = parameters, 
+                 random = random, map = map(parameters, free = free), 
+                 DLL = "interaction")
+
+theta <- optim(obj$par, obj$fn, obj$gr, control = list(maxit = 1000, trace = 3))$par
+obj$par <- theta
+rep  <- sdreport(obj)
+fixef <- summary(rep, "fixed")
+ranef <- summary(rep, "random")
+parameters <- update.parameters(parameters, fixef, ranef)
+
+# Add diver interaction effects:
+free <- unique(c(free, "length_diver_effect", "log_sigma_length_diver")) 
+fixed <- setdiff(names(parameters), free)
+obj <- MakeADFun(data = data, # fun(data, 50000), 
+                 parameters = parameters, 
+                 random = random, map = map(parameters, free = free), 
+                 DLL = "interaction")
+
+theta <- optim(obj$par, obj$fn, obj$gr, control = list(maxit = 1000, trace = 3))$par
+obj$par <- theta
+rep  <- sdreport(obj)
+fixef <- summary(rep, "fixed")
+ranef <- summary(rep, "random")
+parameters <- update.parameters(parameters, fixef, ranef)
+
+# Residual plots:
+r <- data$z - obj$report()$mu_p  
+
+boxplot(r ~ data$year, cex = 0.1, ylim = c(-2, 2))
+hline(0, col = "red", lwd = 2)
+
+boxplot(r ~ data$len, cex = 0.1, ylim = c(-2, 2))
+hline(0, col = "red", lwd = 2)
+
+boxplot(r ~ data$region, cex = 0.1, ylim = c(-2, 2))
+hline(0, col = "red", lwd = 2)
+
+boxplot(r ~ data$transect, cex = 0.1, ylim = c(-2, 2))
+hline(0, col = "red", lwd = 2)
+
+boxplot(r ~ data$swept_area, cex = 0.1, ylim = c(-2, 2))
+hline(0, col = "red", lwd = 2)
+
 

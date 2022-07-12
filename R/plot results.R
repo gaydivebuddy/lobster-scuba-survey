@@ -1,5 +1,8 @@
+# Year effect:
+gbarplot(exp(ranef[rownames(ranef) == "year_effect", 1]))
+
 # Diver effect:
-diver_effect <- exp(random[rownames(random) == "diver_effect", 1])
+diver_effect <- exp(ranef[rownames(ranef) == "diver_effect", 1])
 names(diver_effect) <- divers
 gbarplot(diver_effect, grid = TRUE)
 hline(1, col = "red", lwd = 2)
@@ -8,15 +11,17 @@ mtext("Diver", 1, 2.75, cex = 1.5)
 mtext("Diver effect", 2, 2.75, cex = 1.5)
 
 # Transect effect:
-gbarplot(exp(random[rownames(random) == "transect_effect", 1]), grid = TRUE)
+gbarplot(exp(ranef[rownames(ranef) == "transect_effect", 1]), grid = TRUE)
 
 # Region effect:
-gbarplot(exp(random[rownames(random) == "region_effect", 1]))
+region_effect <- exp(ranef[grep("region_effect", rownames(ranef)), 1])[match(regions, regions.ordered)]
+names(region_effect) <- regions.ordered
+gbarplot(region_effect)
 hline(1, col = "red", lwd = 2)
-text(1:length(regions), 0.5 * exp(random[rownames(random) == "region_effect", 1]),regions, srt = 90)
+text(1:length(regions), 0.5 * region_effect, names(region_effect), srt = 90)
 
 # Length x diver effect effect:
-length_diver <- random[rownames(random) == "length_diver_effect", 1]
+length_diver <- ranef[rownames(ranef) == "length_diver_effect", 1]
 dim(length_diver) <- c(max(data$diver)+1, max(data$len)+1)
 dimnames(length_diver) <- list(divers, lens)
 length_diver <- length_diver[setdiff(rownames(length_diver), c("Asselin, Natalie", "Leblanc, Stepan")), ]
@@ -26,7 +31,7 @@ axis(1, at = 1:nrow(length_diver), labels = rownames(length_diver), las = 2)
 axis(2, at = 1:ncol(length_diver), labels = colnames(length_diver), las = 2)
 
 # Diver x year effect:
-diver_year_effect <- random[rownames(random) == "diver_year_effect", 1]
+diver_year_effect <- ranef[rownames(ranef) == "diver_year_effect", 1]
 dim(diver_year_effect) <- c(max(data$year)+1, max(data$diver)+1)
 dimnames(diver_year_effect) <- list(min(year(mm$date)):max(year(mm$date)), divers)
 m <- cbind(matrix(0, nrow = 7, ncol = 1), matrix(1, nrow = 7, ncol = 7))
@@ -45,7 +50,7 @@ tiff(file = paste0("figures/length x year effect - ", language, ".tiff"), compre
 m <- rbind(0, cbind(0, 0, matrix(1, nrow = 10, ncol = 10), 0), 0)
 layout(m)
 par(mar = c(0,0,0,0))
-length_year <- as.numeric(random[rownames(random) == "length_year_effect", 1])
+length_year <- as.numeric(ranef[rownames(ranef) == "length_year_effect", 1])
 dim(length_year) <- c(max(data$year)+1, max(data$len)+1)
 dimnames(length_year) <- list(year = min(year(mm$date)):max(year(mm$date)), length = lens)
 image(1:nrow(length_year), 1:ncol(length_year), length_year, 
@@ -64,7 +69,7 @@ tiff(file = paste0("figures/length x region effect - ", language, ".tiff"), comp
 m <- rbind(0, cbind(0, 0, matrix(1, nrow = 10, ncol = 10), 0), 0, 0)
 layout(m)
 par(mar = c(0,0,0,0))
-length_region <- as.numeric(random[rownames(random) == "length_region_effect", 1])
+length_region <- as.numeric(ranef[rownames(ranef) == "length_region_effect", 1])
 dim(length_region) <- c(max(data$region)+1, max(data$len)+1)
 dimnames(length_region) <- list(region = regions, length = lens)
 image(1:nrow(length_region), 1:ncol(length_region), length_region, 
@@ -84,7 +89,7 @@ m <- cbind(matrix(0, nrow = 7, ncol = 1), matrix(1, nrow = 7, ncol = 7))
 m <- cbind(0, rbind(0, m, 0, 0), 0)
 layout(m)
 par(mar = c(0,0,0,0))
-region_year <- as.numeric(random[rownames(random) == "region_year_effect", 1])
+region_year <- as.numeric(ranef[rownames(ranef) == "region_year_effect", 1])
 dim(region_year) <- c(max(data$year)+1, max(data$region)+1)
 dimnames(region_year) <- list(year = min(year(mm$date)):max(year(mm$date)), region = regions)
 
@@ -104,22 +109,44 @@ dimnames(mu) <- list(length = lens,
                      year = years,
                      region = regions)
 
-m <- kronecker(matrix(1:12, ncol = 2), matrix(1, nrow = 5, ncol = 5))
-m <- cbind(0, rbind(0, m, 0, 0), 0)
-layout(m)
-par(mar = c(0,0,0,0))
-for (i in 8:length(years)){
-   gbarplot(100*mu[,as.character(years[i]), "Neguac"], 
-            xlim = c(0, 100), ylim = c(0, 2), xaxs = "i", yaxs = "i", 
-            xaxt = "n", yaxt = "n", grid = TRUE)
-   text(par("usr")[1] + 0.8 * diff(par("usr")[1:2]),
-        par("usr")[3] + 0.8 * diff(par("usr")[3:4]),
-        years[i], cex = 1.25)
-   
-   if ((i-7) %in% 1:6) axis(2)
-   if ((i-7) %in% c(6, 12)) axis(1)
-   box(col = "grey60")
+bounds <- list("Caraquet" = c(0, 6, 1),
+               "Cocagne" = c(0, 4, 0.5),
+               "Fox Harbor" = c(0, 0.02, 0.005), 
+               "Murray Corner" = c(0, 0.5, 0.1),
+               "Neguac" = c(0, 1.5, 0.3),
+               "Pointe-Verte" = c(0, 4, 0.5),
+               "Richibucto" = c(0, 3.0, 0.5),
+               "Shediac" = c(0, 1.5, 0.3),
+               "Toney River" = c(0, 0.25, 0.05))
+for (j in 1:length(regions)){
+   tiff(file = paste0("figures/length frequencies ", regions[j], " - ", language, ".tiff"), compression = "lzw", units = "in", res = 300, height = 10, width = 7.5)
+   m <- kronecker(matrix(1:12, ncol = 2), matrix(1, nrow = 5, ncol = 5))
+   m <- cbind(0, rbind(0, m, 0, 0), 0)
+   layout(m)
+   par(mar = c(0,0,0,0))
+   for (i in 8:length(years)){
+      ylim = bounds[regions[j]][[1]]
+      gbarplot(100*mu[,as.character(years[i]), regions[j]], 
+               xlim = c(0, 100), ylim = ylim[1:2], xaxs = "i", yaxs = "i", 
+               xaxt = "n", yaxt = "n", grid = TRUE)
+      text(par("usr")[1] + 0.8 * diff(par("usr")[1:2]),
+           par("usr")[3] + 0.8 * diff(par("usr")[3:4]),
+           years[i], cex = 1.25)
+      
+      if ((i-7) %in% 3) mtext("Density (# /m2)", 2, 3.0, at = 0)
+      if ((i-7) %in% 1) axis(2, at = seq(ylim[1], ylim[2], by = ylim[3]))
+      if ((i-7) %in% 2:6) axis(2, at = seq(ylim[1], ylim[2]-ylim[3], by = ylim[3]))
+      if ((i-7) == 6)  axis(1, at = 10 * seq(0, 8, by = 2))
+      if ((i-7) == 12){
+         mtext("Carapace length (mm)", 1, 3.0, at = 0)
+         axis(1, at = 10 * seq(0, 10, by = 2))
+      } 
+      #if ((i-7) == 7)  mtext(regions[j], 3, 0.5, cex = 1.5)
+      box(col = "grey60")
+   }
+   dev.off()
 }
+
 
 # Variance parameters:
 tiff(file = paste0("figures/variance parameters - ", language, ".tiff"), compression = "lzw", units = "in", res = 300, height = 7, width = 7.5)
